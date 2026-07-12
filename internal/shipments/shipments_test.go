@@ -87,3 +87,121 @@ func TestGetUnknownIDNotFound(t *testing.T) {
 		t.Fatalf("Get(unknown id) found = true, want false")
 	}
 }
+
+// fixedInt returns a randInt func that always returns n — deterministic id allocation for tests.
+func fixedInt(n int) func() int { return func() int { return n } }
+
+func TestCreateAllocatesIDAndSeedsTimeline(t *testing.T) {
+	ctx := context.Background()
+	store := New(awskv.NewMemory())
+
+	req := CreateRequest{Recipient: "Dana Okafor", Origin: "Test Origin Depot", Destination: "Test Destination"}
+	sh, err := Create(ctx, store, req, fixedNow, fixedInt(23456))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if sh.ID != "BD-33456" {
+		t.Errorf("Create id = %q, want BD-33456 (10000 + 23456%%90000)", sh.ID)
+	}
+	if sh.Status != Created {
+		t.Errorf("Create status = %q, want %q", sh.Status, Created)
+	}
+	if sh.CurrentLocation != req.Origin {
+		t.Errorf("Create CurrentLocation = %q, want origin %q", sh.CurrentLocation, req.Origin)
+	}
+	if len(sh.Timeline) != 1 || sh.Timeline[0].Status != Created {
+		t.Fatalf("Create timeline = %+v, want exactly one Created event", sh.Timeline)
+	}
+
+	// Persisted, not just returned.
+	stored, found, err := store.Get(ctx, sh.ID)
+	if err != nil || !found {
+		t.Fatalf("Get(%s) after Create = %v, %v, %v", sh.ID, stored, found, err)
+	}
+	if stored.Recipient != req.Recipient {
+		t.Errorf("stored Recipient = %q, want %q", stored.Recipient, req.Recipient)
+	}
+}
+
+func TestCreateRetriesOnIDCollision(t *testing.T) {
+	ctx := context.Background()
+	store := New(awskv.NewMemory())
+
+	// Pre-occupy the id that fixedInt(1) would allocate on the first attempt.
+	if err := store.Save(ctx, Shipment{ID: "BD-10001"}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	calls := 0
+	pick := func() int {
+		calls++
+		if calls == 1 {
+			return 1 // collides with BD-10001
+		}
+		return 2 // BD-10002, free
+	}
+	sh, err := Create(ctx, store, CreateRequest{Recipient: "R", Origin: "O", Destination: "D"}, fixedNow, pick)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if sh.ID != "BD-10002" {
+		t.Errorf("Create id after collision = %q, want BD-10002", sh.ID)
+	}
+	if calls < 2 {
+		t.Errorf("randInt called %d times, want at least 2 (collision then retry)", calls)
+	}
+}
+
+func TestUpdateStatusAppendsEventAndAdvancesFields(t *testing.T) {
+	ctx := context.Background()
+	store := New(awskv.NewMemory())
+	created, err := Create(ctx, store, CreateRequest{Recipient: "R", Origin: "Origin City", Destination: "D"}, fixedNow, fixedInt(1))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	eta := fixedNow().Add(4 * time.Hour)
+	upd := StatusUpdate{Status: PickedUp, Label: "Picked up — assigned to Bravo Dispatch Priority Air", CurrentLocation: "Origin City sort facility", ETA: eta, Carrier: "Bravo Dispatch Priority Air"}
+	updated, found, err := UpdateStatus(ctx, store, created.ID, upd, fixedNow)
+	if err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+	if !found {
+		t.Fatalf("UpdateStatus found = false, want true")
+	}
+	if updated.Status != PickedUp {
+		t.Errorf("Status = %q, want %q", updated.Status, PickedUp)
+	}
+	if updated.CurrentLocation != upd.CurrentLocation {
+		t.Errorf("CurrentLocation = %q, want %q", updated.CurrentLocation, upd.CurrentLocation)
+	}
+	if !updated.ETA.Equal(eta) {
+		t.Errorf("ETA = %v, want %v", updated.ETA, eta)
+	}
+	if updated.Carrier != upd.Carrier {
+		t.Errorf("Carrier = %q, want %q", updated.Carrier, upd.Carrier)
+	}
+	if len(updated.Timeline) != 2 || updated.Timeline[1].Status != PickedUp {
+		t.Fatalf("Timeline = %+v, want [Created, PickedUp]", updated.Timeline)
+	}
+
+	// Persisted, not just returned.
+	stored, found, err := store.Get(ctx, created.ID)
+	if err != nil || !found {
+		t.Fatalf("Get after UpdateStatus = %v, %v, %v", stored, found, err)
+	}
+	if stored.Status != PickedUp {
+		t.Errorf("persisted Status = %q, want %q", stored.Status, PickedUp)
+	}
+}
+
+func TestUpdateStatusUnknownIDNotFound(t *testing.T) {
+	store := New(awskv.NewMemory())
+	_, found, err := UpdateStatus(context.Background(), store, "BD-99999", StatusUpdate{Status: PickedUp}, fixedNow)
+	if err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+	if found {
+		t.Fatalf("UpdateStatus(unknown id) found = true, want false")
+	}
+}

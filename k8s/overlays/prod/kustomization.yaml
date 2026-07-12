@@ -11,3 +11,9 @@ images:
     newTag: placeholder
   - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-shipments
     newTag: placeholder
+  - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-intake
+    newTag: placeholder
+  - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-dispatch-worker
+    newTag: placeholder
+  - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-notify
+    newTag: placeholder

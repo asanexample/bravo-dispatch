@@ -39,3 +39,20 @@ jobs:
         with:
           go-version: stable
       - run: go test ./...
+
+  test-notify:
+    name: notify unit test (Node/TypeScript)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/notify
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: services/notify/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test

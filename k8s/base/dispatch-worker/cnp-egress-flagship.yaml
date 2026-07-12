@@ -1,0 +1,24 @@
+# CROSS-namespace egress to the platform flagship service (ADR-099): the in-process flagd syncer polls
+# GET /sync/bravo/dispatch/dev on flagship-server:8080 in the platform-flagship-dev namespace. Same
+# identity-match rule as any east-west call — the namespace MUST be named (a bare app: label defaults to this
+# pod's own namespace). flagship admits us via its allow-sync-from-dispatch-worker (or equivalent) ingress CNP.
+# Kept as its own file (unlike alpha-shop's storefront, which folds this into one egress file) because this is
+# Bravo Dispatch's first cross-namespace hop — worth calling out on its own per the known Cilium
+# 0.0.0.0/0-doesn't-cover-pod-hops trap. DNS is covered once for this pod by cnp-egress-eastwest.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-dispatch-worker-egress-flagship
+spec:
+  endpointSelector:
+    matchLabels:
+      app: dispatch-worker
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: platform-flagship-dev
+            app: flagship-server
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

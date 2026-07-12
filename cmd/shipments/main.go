@@ -1,15 +1,17 @@
 // Command shipments is the Bravo Dispatch shipments service (team bravo, product dispatch, service shipments).
 //
 // Internal, east-west only (ClusterIP, no HTTPRoute): the tracker BFF calls it to look up a parcel's status
-// and timeline. Backed by the self-service DynamoDB table (SHIPMENTS_TABLE, ADR-073), falling back to memory
-// when unset (local dev / tests). On startup it seeds a small set of obviously-fictional demo shipments
-// (internal/shipments.Seed) so the tracker's landing page always has something to link to.
+// and timeline; intake calls it to create a new shipment; dispatch-worker calls it to advance a shipment's
+// status once it's picked a carrier. Backed by the self-service DynamoDB table (SHIPMENTS_TABLE, ADR-073),
+// falling back to memory when unset (local dev / tests). On startup it seeds a small set of obviously-fictional
+// demo shipments (internal/shipments.Seed) so the tracker's landing page always has something to link to.
 package main
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -54,6 +56,44 @@ func (s *server) routes() *http.ServeMux {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "shipment not found"})
 			return
 		}
+		writeJSON(w, http.StatusOK, sh)
+	})
+
+	// Called by intake: create a brand-new shipment (status starts at Created, one timeline event).
+	mux.HandleFunc("POST /shipments", func(w http.ResponseWriter, r *http.Request) {
+		var req shipments.CreateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		sh, err := shipments.Create(r.Context(), s.store, req, func() time.Time { return time.Now().UTC() }, rand.Int)
+		if err != nil {
+			log.ErrorContext(r.Context(), "shipment create failed", "err", err)
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		log.InfoContext(r.Context(), "shipment created", "id", sh.ID)
+		writeJSON(w, http.StatusCreated, sh)
+	})
+
+	// Called by dispatch-worker: append a timeline event and advance the shipment's current status/location/ETA.
+	mux.HandleFunc("POST /shipments/{id}/status", func(w http.ResponseWriter, r *http.Request) {
+		var req shipments.StatusUpdate
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		sh, found, err := shipments.UpdateStatus(r.Context(), s.store, r.PathValue("id"), req, func() time.Time { return time.Now().UTC() })
+		if err != nil {
+			log.ErrorContext(r.Context(), "shipment status update failed", "err", err)
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		if !found {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "shipment not found"})
+			return
+		}
+		log.InfoContext(r.Context(), "shipment status updated", "id", sh.ID, "status", sh.Status)
 		writeJSON(w, http.StatusOK, sh)
 	})
 

@@ -1,10 +1,12 @@
-# East-west egress from the tracker BFF to the internal shipments service. Same namespace, port 8080. The
-# environment default-denies egress and in-cluster pod-to-pod is Cilium identity-matched (the broad 0.0.0.0/0
-# egress used for AWS does NOT cover pods), so this specific allow is required. DNS to CoreDNS resolves the
-# Service name. shipments enforces the ingress half (shipments/cnp-ingress-from-tracker.yaml).
+# East-west egress from the tracker BFF: to the internal shipments service (lookups), and to intake
+# (forward-compatible — nothing calls it through tracker yet; see intake/cnp-ingress-from-tracker.yaml). Same
+# namespace, port 8080 for both. The environment default-denies egress and in-cluster pod-to-pod is Cilium
+# identity-matched (the broad 0.0.0.0/0 egress used for AWS does NOT cover pods), so these specific allows are
+# required. DNS to CoreDNS resolves the Service names. shipments/intake enforce their own ingress halves.
 #
-# P1 has no cross-namespace hop (no flagship flag consumption yet — that lands with dispatch-worker in P2, and
-# needs its own egress/ingress CNP pair then, per the known Cilium 0.0.0.0/0-doesn't-cover-pod-hops trap).
+# No cross-namespace hop from tracker (no flagship flag consumption here) — that's dispatch-worker's, with its
+# own egress/ingress CNP pair (dispatch-worker/cnp-egress-flagship.yaml), per the known Cilium
+# 0.0.0.0/0-doesn't-cover-pod-hops trap.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -30,6 +32,8 @@ spec:
     - toEndpoints:
         - matchLabels:
             app: shipments
+        - matchLabels:
+            app: intake
       toPorts:
         - ports:
             - port: "8080"

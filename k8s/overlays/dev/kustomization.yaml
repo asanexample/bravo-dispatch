@@ -14,8 +14,20 @@ replicas:
     count: 1
   - name: shipments
     count: 1
+  - name: intake
+    count: 1
+  - name: dispatch-worker
+    count: 1
+  - name: notify
+    count: 1
 images:
   - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-tracker
     newTag: placeholder # the ApplicationSet injects the real digest from the Release record (ADR-071)
   - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-shipments
+    newTag: placeholder
+  - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-intake
+    newTag: placeholder
+  - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-dispatch-worker
+    newTag: placeholder
+  - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-notify
     newTag: placeholder

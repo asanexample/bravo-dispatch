@@ -7,6 +7,7 @@ package shipments
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/asanexample/bravo-dispatch/internal/awskv"
@@ -73,6 +74,87 @@ func (s *Store) Get(ctx context.Context, id string) (Shipment, bool, error) {
 		return Shipment{}, false, err
 	}
 	return sh, true, nil
+}
+
+// CreateRequest is the caller-supplied input to Create (the intake service's POST /shipments body).
+type CreateRequest struct {
+	Recipient   string `json:"recipient"`
+	Origin      string `json:"origin"`
+	Destination string `json:"destination"`
+}
+
+// Create allocates a fresh tracking id (see NewID), seeds the shipment at Created with one timeline event,
+// and persists it. now/randInt are injected so tests get a deterministic clock and id.
+func Create(ctx context.Context, store *Store, req CreateRequest, now func() time.Time, randInt func() int) (Shipment, error) {
+	id, err := NewID(ctx, store, randInt)
+	if err != nil {
+		return Shipment{}, err
+	}
+	t := now()
+	sh := Shipment{
+		ID:              id,
+		Recipient:       req.Recipient,
+		Origin:          req.Origin,
+		Destination:     req.Destination,
+		Carrier:         "",
+		Status:          Created,
+		CurrentLocation: req.Origin,
+		ETA:             t.Add(72 * time.Hour), // demo placeholder ETA until dispatch-worker assigns a real one
+		Timeline:        []Event{{Status: Created, Label: "Label created", At: t}},
+	}
+	if err := store.Save(ctx, sh); err != nil {
+		return Shipment{}, err
+	}
+	return sh, nil
+}
+
+// StatusUpdate is the caller-supplied input to UpdateStatus (dispatch-worker's POST /shipments/{id}/status
+// body): a new point in the shipment's timeline plus its current snapshot fields.
+type StatusUpdate struct {
+	Status          Status    `json:"status"`
+	Label           string    `json:"label"`
+	CurrentLocation string    `json:"currentLocation"`
+	ETA             time.Time `json:"eta"`
+	Carrier         string    `json:"carrier,omitempty"`
+}
+
+// UpdateStatus appends a timeline event and advances the shipment's current Status/CurrentLocation/ETA (and
+// Carrier, once assigned). found=false if id is unknown — the caller decides whether that's a 404 (HTTP) or a
+// drop-the-message case (the background worker).
+func UpdateStatus(ctx context.Context, store *Store, id string, upd StatusUpdate, now func() time.Time) (Shipment, bool, error) {
+	sh, found, err := store.Get(ctx, id)
+	if err != nil || !found {
+		return Shipment{}, found, err
+	}
+	sh.Status = upd.Status
+	sh.CurrentLocation = upd.CurrentLocation
+	sh.ETA = upd.ETA
+	if upd.Carrier != "" {
+		sh.Carrier = upd.Carrier
+	}
+	sh.Timeline = append(sh.Timeline, Event{Status: upd.Status, Label: upd.Label, At: now()})
+	if err := store.Save(ctx, sh); err != nil {
+		return Shipment{}, true, err
+	}
+	return sh, true, nil
+}
+
+// NewID generates a fresh tracking number in the existing "BD-#####" convention (see SampleIDs), retrying a
+// few times against a collision (checked via store.Get) before giving up. The collision space (90,000 ids) is
+// tiny by production standards, but a demo doesn't need a real distributed id allocator.
+func NewID(ctx context.Context, store *Store, randInt func() int) (string, error) {
+	const attempts = 10
+	for i := 0; i < attempts; i++ {
+		id := fmt.Sprintf("BD-%05d", 10000+randInt()%90000)
+		_, found, err := store.Get(ctx, id)
+		if err != nil {
+			return "", err
+		}
+		if !found {
+			return id, nil
+		}
+	}
+	return "", fmt.Errorf("shipments: could not allocate a unique tracking id after %d attempts", attempts)
 }
 
 // SampleIDs are the fixed demo tracking numbers seeded on startup (see Seed) and served by List. awskv's

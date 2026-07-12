@@ -1,0 +1,105 @@
+# notify — Bravo Dispatch's fleet reference for the platform's Beyla (eBPF) auto-instrumentation baseline
+# (ADR-100 L0). Deliberately NO `instrumentation.opentelemetry.io/inject-sdk` annotation here: this is the
+# only Bravo Dispatch service without an OTel SDK (it's also the fleet's first Node.js/TypeScript service, see
+# services/notify), so it's the one worth proving the zero-touch Beyla fallback against — the SDK and Beyla
+# must never both run on one workload (Beyla's context-propagation fights an SDK's traceparent), so an
+# un-instrumented service is the correct, deliberate way to exercise the fallback path. No AWS resources of
+# its own, so it shares the app-bravo ServiceAccount. Resource requests/limits are smaller than the Go
+# services' — Node is lighter for this small a workload.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: notify
+  labels:
+    app: notify
+    app.kubernetes.io/name: dispatch-notify
+    team: bravo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: notify
+  strategy:
+    canary:
+      maxSurge: 1
+      maxUnavailable: 0
+      steps:
+        - setWeight: 100
+  template:
+    metadata:
+      labels:
+        app: notify
+        app.kubernetes.io/name: dispatch-notify
+        team: bravo
+    spec:
+      serviceAccountName: app-bravo
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # node:22-alpine's built-in "node" user is uid/gid 1000 (unlike the Go services' distroless nonroot,
+        # which is 65532) — pin the matching numeric UID/GID so the kubelet can verify non-root.
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          matchLabelKeys: [rollouts-pod-template-hash]
+          labelSelector:
+            matchLabels:
+              app: notify
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          matchLabelKeys: [rollouts-pod-template-hash]
+          labelSelector:
+            matchLabels:
+              app: notify
+      containers:
+        - name: notify
+          image: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-notify:placeholder
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: PORT
+              value: "8080"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 100m
+              memory: 96Mi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

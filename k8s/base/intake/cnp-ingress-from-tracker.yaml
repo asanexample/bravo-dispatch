@@ -1,0 +1,20 @@
+# East-west ingress: intake accepts traffic from tracker, on port 8080. Forward-compatible with a future
+# tracker UI flow (submitting a new shipment from the SPA); nothing in this phase calls intake through tracker
+# yet — dispatch/dispatch-worker/notify wiring lands first. The caller half (tracker's egress-to-intake) is
+# tracker/cnp-egress-eastwest.yaml. (Environment namespaces default-deny ingress; this is the additive allow.)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-intake-ingress-from-tracker
+spec:
+  endpointSelector:
+    matchLabels:
+      app: intake
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: tracker
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

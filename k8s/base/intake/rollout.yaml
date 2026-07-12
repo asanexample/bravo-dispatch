@@ -1,0 +1,110 @@
+# intake — Bravo Dispatch's shipment-intake orchestrator. Internal only (ClusterIP, no HTTPRoute), no AWS
+# resources of its own, so it shares the app-bravo ServiceAccount. Calls shipments (create) and dispatch-worker
+# (route) east-west — both calls propagate the trace, so a create request is one connected trace spanning
+# intake→shipments and intake→dispatch-worker.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: intake
+  labels:
+    app: intake
+    app.kubernetes.io/name: dispatch-intake
+    team: bravo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: intake
+  strategy:
+    canary:
+      maxSurge: 1
+      maxUnavailable: 0
+      steps:
+        - setWeight: 100
+  template:
+    metadata:
+      annotations:
+        instrumentation.opentelemetry.io/inject-sdk: "platform"
+      labels:
+        app: intake
+        app.kubernetes.io/name: dispatch-intake
+        team: bravo
+    spec:
+      serviceAccountName: app-bravo
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          matchLabelKeys: [rollouts-pod-template-hash]
+          labelSelector:
+            matchLabels:
+              app: intake
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          matchLabelKeys: [rollouts-pod-template-hash]
+          labelSelector:
+            matchLabels:
+              app: intake
+      containers:
+        - name: intake
+          image: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-intake:placeholder
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # East-west calls, same namespace. SHIPMENTS_URL creates the shipment; DISPATCH_WORKER_URL routes it.
+            - name: SHIPMENTS_URL
+              value: http://shipments
+            - name: DISPATCH_WORKER_URL
+              value: http://dispatch-worker
+            - name: OTEL_SERVICE_NAME
+              value: dispatch-intake
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=bravo-dispatch
+            - name: PYROSCOPE_SERVER_ADDRESS
+              value: https://preprod-profiles.aws.refplat.org
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

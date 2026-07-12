@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dispatch-worker
+spec:
+  type: ClusterIP
+  selector:
+    app: dispatch-worker
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP

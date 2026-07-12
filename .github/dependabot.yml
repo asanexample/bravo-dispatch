@@ -13,6 +13,16 @@ updates:
       app-dependencies:
         patterns: ["*"]
 
+  - package-ecosystem: "npm"
+    directory: "/services/notify"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "notify"]
+    groups:
+      notify-dependencies:
+        patterns: ["*"]
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

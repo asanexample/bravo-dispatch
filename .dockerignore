@@ -1,5 +1,6 @@
-# Keep the build context minimal. The tracker build needs web/ (the SPA source, built inside the image), but
-# never the host's node_modules or a stale dist — those are produced fresh in the node build stage.
+# Keep the build context minimal. The tracker and notify builds need their own source (web/, services/notify/),
+# built inside the image, but never the host's node_modules or a stale dist — those are produced fresh in each
+# service's own build stage.
 .git
 .github
 k8s
@@ -8,3 +9,5 @@ catalog-info.yaml
 .dockerignore
 web/node_modules
 web/dist
+services/notify/node_modules
+services/notify/dist

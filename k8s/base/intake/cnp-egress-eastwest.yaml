@@ -1,0 +1,36 @@
+# East-west egress from intake to the internal services it orchestrates: shipments (create) and
+# dispatch-worker (route). Same namespace, port 8080. The environment default-denies egress and in-cluster
+# pod-to-pod is Cilium identity-matched (the broad 0.0.0.0/0 egress used for AWS does NOT cover pods), so these
+# specific allows are required. DNS to CoreDNS resolves the Service names. Each callee enforces the matching
+# ingress half (shipments/cnp-ingress-eastwest.yaml; dispatch-worker/cnp-ingress-from-intake.yaml).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-intake-egress-eastwest
+spec:
+  endpointSelector:
+    matchLabels:
+      app: intake
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            app: shipments
+        - matchLabels:
+            app: dispatch-worker
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

@@ -1,0 +1,19 @@
+# East-west ingress: dispatch-worker accepts traffic ONLY from intake, on port 8080 (POST /dispatch).
+# (Environment namespaces default-deny ingress; this is the additive allow. The caller half is
+# intake/cnp-egress-eastwest.yaml.)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-dispatch-worker-ingress-from-intake
+spec:
+  endpointSelector:
+    matchLabels:
+      app: dispatch-worker
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: intake
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

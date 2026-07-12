@@ -3,8 +3,9 @@
 # patches the real host onto the tracker HTTPRoute — so NO `namespace:` here and the route host is a fail-safe
 # placeholder. Per-stage overlays carry each service's image digest + any real stage deltas.
 #
-# One Product, two services in P1 (ADR-067): tracker (edge: SPA + BFF) + the internal, east-west-only
-# shipments service (DynamoDB-backed shipment records). intake/dispatch-worker/notify land in later phases.
+# Five services in P1-P3 (ADR-067): tracker (edge: SPA + BFF), the internal DynamoDB-backed shipments record
+# store, intake (creation orchestrator), dispatch-worker (owns its own SQS queue + SNS topic; routes +
+# notifies), and notify (Node/TS, deliberately un-instrumented — the fleet's Beyla eBPF baseline reference).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -19,7 +20,22 @@ resources:
   # shipments — internal (self-service DynamoDB)
   - shipments/rollout.yaml
   - shipments/service.yaml
-  - shipments/cnp-ingress-from-tracker.yaml
+  - shipments/cnp-ingress-eastwest.yaml
+  # intake — internal (creation orchestrator; no AWS resources of its own)
+  - intake/rollout.yaml
+  - intake/service.yaml
+  - intake/cnp-egress-eastwest.yaml
+  - intake/cnp-ingress-from-tracker.yaml
+  # dispatch-worker — internal (self-service SQS + SNS; producer+consumer in one service)
+  - dispatch-worker/rollout.yaml
+  - dispatch-worker/service.yaml
+  - dispatch-worker/cnp-egress-eastwest.yaml
+  - dispatch-worker/cnp-egress-flagship.yaml
+  - dispatch-worker/cnp-ingress-from-intake.yaml
+  # notify — internal (Node/TS, no OTel SDK — Beyla-only reference workload)
+  - notify/rollout.yaml
+  - notify/service.yaml
+  - notify/cnp-ingress-from-dispatch-worker.yaml
   # shared observability egress (all services)
   - netpol-egress-otel.yaml
   - netpol-egress-pyroscope.yaml

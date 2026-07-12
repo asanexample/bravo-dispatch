@@ -1,0 +1,39 @@
+# East-west egress from dispatch-worker to the internal services it calls while processing a dispatch request:
+# shipments (advance status) and notify (deliver the fan-out notification). Same namespace, port 8080. The
+# environment default-denies egress and in-cluster pod-to-pod is Cilium identity-matched (the broad 0.0.0.0/0
+# egress used for AWS/SQS/SNS does NOT cover pods), so these specific allows are required. DNS to CoreDNS
+# resolves both the Service names here AND the cross-namespace flagship Service name used by
+# cnp-egress-flagship.yaml (one DNS rule, matched by endpointSelector, covers every egress rule on this pod).
+# Each callee enforces its own ingress half (shipments/cnp-ingress-eastwest.yaml; notify has none — see its
+# cnp-ingress-from-dispatch-worker.yaml).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-dispatch-worker-egress-eastwest
+spec:
+  endpointSelector:
+    matchLabels:
+      app: dispatch-worker
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            app: shipments
+        - matchLabels:
+            app: notify
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

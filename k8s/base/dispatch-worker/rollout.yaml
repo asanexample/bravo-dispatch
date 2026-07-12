@@ -1,0 +1,124 @@
+# dispatch-worker — routes a shipment once intake creates it. Owns its OWN SQS queue (requests, readwrite: its
+# HTTP handler enqueues, its background goroutine consumes — see cmd/dispatch-worker) AND its OWN SNS topic
+# (events, readwrite: publishes a proof-of-capability event). Both self-service resources are scoped to this
+# ONE service (ADR-073 / the Crossplane Composition's single-owner contract), so it needs its own SA — the
+# Composition mints a Pod-bravo-dispatch-<stage>-dispatch-worker role with the derived least-privilege
+# SQS+SNS IAM and associates it here. AWS creds via Pod Identity on app-bravo-dispatch-worker; AWS_REGION
+# explicit (IMDS blocked). REQUESTS_QUEUE_URL / EVENTS_TOPIC_ARN come from the dispatch-worker-resources
+# ConfigMap (envFrom below).
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: dispatch-worker
+  labels:
+    app: dispatch-worker
+    app.kubernetes.io/name: dispatch-dispatch-worker
+    team: bravo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dispatch-worker
+  strategy:
+    canary:
+      maxSurge: 1
+      maxUnavailable: 0
+      steps:
+        - setWeight: 100
+  template:
+    metadata:
+      annotations:
+        instrumentation.opentelemetry.io/inject-sdk: "platform"
+      labels:
+        app: dispatch-worker
+        app.kubernetes.io/name: dispatch-dispatch-worker
+        team: bravo
+    spec:
+      serviceAccountName: app-bravo-dispatch-worker
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          matchLabelKeys: [rollouts-pod-template-hash]
+          labelSelector:
+            matchLabels:
+              app: dispatch-worker
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          matchLabelKeys: [rollouts-pod-template-hash]
+          labelSelector:
+            matchLabels:
+              app: dispatch-worker
+      containers:
+        - name: dispatch-worker
+          image: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-dispatch-worker:placeholder
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: dispatch-worker-resources
+                optional: true
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: AWS_REGION
+              value: us-east-1
+            # East-west calls, same namespace.
+            - name: SHIPMENTS_URL
+              value: http://shipments
+            - name: NOTIFY_URL
+              value: http://notify
+            # Cross-namespace: the flagd in-process resolver polls this flagship sync source for
+            # enable-priority-routing (ADR-099). See cnp-egress-flagship.yaml for the CNP half.
+            - name: FLAGSHIP_SYNC_URL
+              value: http://flagship-server.platform-flagship-dev.svc.cluster.local/sync/bravo/dispatch/dev
+            - name: OTEL_SERVICE_NAME
+              value: dispatch-dispatch-worker
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=bravo-dispatch
+            - name: PYROSCOPE_SERVER_ADDRESS
+              value: https://preprod-profiles.aws.refplat.org
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

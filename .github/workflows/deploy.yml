@@ -2,11 +2,11 @@ name: Deploy
 
 # Thin caller (ADR-067 / ADR-071). The supply-chain backbone lives in the app-team-unwritable
 # asanexample/trusted-ci repo. One build→provenance→promote chain PER SERVICE (Bravo Dispatch is one Product
-# with two services in P1): each builds its own image (team-bravo/dispatch-<service>) from its own Dockerfile,
-# signs + SBOMs + provenances it, then records the digest in the platform control-plane Release
+# with five services as of P1-P3): each builds its own image (team-bravo/dispatch-<service>) from its own
+# Dockerfile, signs + SBOMs + provenances it, then records the digest in the platform control-plane Release
 # (gitops/releases/bravo/dispatch/dev.yaml, keyed by service). THIS repo's main is NEVER written by CI (no
-# contents:write). Both services rebuild on any code/Dockerfile/dep change (a shared internal/ change can
-# affect both); manifest/docs-only pushes skip via paths-ignore.
+# contents:write). All services rebuild on any code/Dockerfile/dep change (a shared internal/ change can affect
+# every Go service); manifest/docs-only pushes skip via paths-ignore.
 
 on:
   push:
@@ -78,3 +78,90 @@ jobs:
       service: shipments
       stage: dev
       digest: ${{ needs.build-shipments.outputs.digest }}
+
+  # ---------------- intake (internal orchestrator) ----------------
+  build-intake:
+    permissions: { id-token: write, contents: read }
+    uses: asanexample/trusted-ci/.github/workflows/build-sign.yml@7a739dcd25cff26ac7c33f2301166a1c34301b6c
+    with:
+      app: dispatch-intake
+      product: dispatch
+      tag: ${{ github.sha }}
+      dockerfile: services/intake/Dockerfile
+
+  provenance-intake:
+    needs: build-intake
+    permissions: { id-token: write, contents: read }
+    uses: asanexample/trusted-ci/.github/workflows/slsa-provenance.yml@28dbe1b66c2be6b05801575617d307cafd4a67e7
+    with:
+      image: ${{ needs.build-intake.outputs.image }}
+      digest: ${{ needs.build-intake.outputs.digest }}
+      product: dispatch
+
+  promote-intake:
+    needs: [build-intake, provenance-intake]
+    permissions: { id-token: write, contents: read }
+    uses: asanexample/trusted-ci/.github/workflows/promote.yml@28dbe1b66c2be6b05801575617d307cafd4a67e7
+    with:
+      product: dispatch
+      service: intake
+      stage: dev
+      digest: ${{ needs.build-intake.outputs.digest }}
+
+  # ---------------- dispatch-worker (owns its SQS queue + SNS topic) ----------------
+  build-dispatch-worker:
+    permissions: { id-token: write, contents: read }
+    uses: asanexample/trusted-ci/.github/workflows/build-sign.yml@7a739dcd25cff26ac7c33f2301166a1c34301b6c
+    with:
+      app: dispatch-dispatch-worker
+      product: dispatch
+      tag: ${{ github.sha }}
+      dockerfile: services/dispatch-worker/Dockerfile
+
+  provenance-dispatch-worker:
+    needs: build-dispatch-worker
+    permissions: { id-token: write, contents: read }
+    uses: asanexample/trusted-ci/.github/workflows/slsa-provenance.yml@28dbe1b66c2be6b05801575617d307cafd4a67e7
+    with:
+      image: ${{ needs.build-dispatch-worker.outputs.image }}
+      digest: ${{ needs.build-dispatch-worker.outputs.digest }}
+      product: dispatch
+
+  promote-dispatch-worker:
+    needs: [build-dispatch-worker, provenance-dispatch-worker]
+    permissions: { id-token: write, contents: read }
+    uses: asanexample/trusted-ci/.github/workflows/promote.yml@28dbe1b66c2be6b05801575617d307cafd4a67e7
+    with:
+      product: dispatch
+      service: dispatch-worker
+      stage: dev
+      digest: ${{ needs.build-dispatch-worker.outputs.digest }}
+
+  # ---------------- notify (Node.js/TypeScript, deliberately no OTel SDK — Beyla baseline reference) ----------------
+  build-notify:
+    permissions: { id-token: write, contents: read }
+    uses: asanexample/trusted-ci/.github/workflows/build-sign.yml@7a739dcd25cff26ac7c33f2301166a1c34301b6c
+    with:
+      app: dispatch-notify
+      product: dispatch
+      tag: ${{ github.sha }}
+      dockerfile: services/notify/Dockerfile
+
+  provenance-notify:
+    needs: build-notify
+    permissions: { id-token: write, contents: read }
+    uses: asanexample/trusted-ci/.github/workflows/slsa-provenance.yml@28dbe1b66c2be6b05801575617d307cafd4a67e7
+    with:
+      image: ${{ needs.build-notify.outputs.image }}
+      digest: ${{ needs.build-notify.outputs.digest }}
+      product: dispatch
+
+  promote-notify:
+    needs: [build-notify, provenance-notify]
+    permissions: { id-token: write, contents: read }
+    uses: asanexample/trusted-ci/.github/workflows/promote.yml@28dbe1b66c2be6b05801575617d307cafd4a67e7
+    with:
+      product: dispatch
+      service: notify
+      stage: dev
+      digest: ${{ needs.build-notify.outputs.digest }}

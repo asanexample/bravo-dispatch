@@ -1,10 +1,16 @@
 # Locally built binaries.
 /tracker
 /shipments
+/intake
+/dispatch-worker
 
 # Frontend build artifacts (also covered by web/.gitignore, kept here for a repo-root `go build`/IDE run).
 web/node_modules/
 web/dist/
 *.tsbuildinfo
+
+# notify's Node/TypeScript build artifacts.
+services/notify/node_modules/
+services/notify/dist/
 
 .DS_Store

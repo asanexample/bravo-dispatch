@@ -1,0 +1,19 @@
+# East-west ingress: notify accepts traffic ONLY from dispatch-worker, on port 8080 (POST /events — the
+# actual fan-out delivery mechanism). (Environment namespaces default-deny ingress; this is the additive
+# allow. The caller half is dispatch-worker/cnp-egress-eastwest.yaml.)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-notify-ingress-from-dispatch-worker
+spec:
+  endpointSelector:
+    matchLabels:
+      app: notify
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: dispatch-worker
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
