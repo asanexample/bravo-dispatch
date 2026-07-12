@@ -1,0 +1,21 @@
+# East-west ingress: shipments accepts traffic ONLY from tracker, on port 8080. Plain identity-match (no
+# Cilium mutual-auth `authentication.mode: required` here) — the SPIRE-mTLS zero-trust showcase (ADR-057
+# Phase 2) is a separate preprod demo elsewhere on the platform, not needed for this pairing. (Environment
+# namespaces default-deny ingress; this is the additive allow. The caller half is
+# tracker/cnp-egress-eastwest.yaml.)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-shipments-ingress-from-tracker
+spec:
+  endpointSelector:
+    matchLabels:
+      app: shipments
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: tracker
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

@@ -1,0 +1,21 @@
+# dev (the default stage). Single replica per service to save cost — this is a low-traffic demo product, not
+# alpha-shop's storefront. Images are NOT pinned here (ADR-071): the per-Product ApplicationSet injects each
+# service's deployed digest from the control-plane Release record (gitops/releases/bravo/dispatch/dev.yaml).
+# CI never writes this repo's main; `placeholder` stays.
+#
+# No HPA / progressive-delivery patch in P1 (kept deliberately minimal — a future enhancement once there's
+# real traffic to demo against).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+replicas:
+  - name: tracker
+    count: 1
+  - name: shipments
+    count: 1
+images:
+  - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-tracker
+    newTag: placeholder # the ApplicationSet injects the real digest from the Release record (ADR-071)
+  - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-shipments
+    newTag: placeholder

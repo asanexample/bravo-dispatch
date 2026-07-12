@@ -1,0 +1,18 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: tracker
+spec:
+  parentRefs:
+    - name: preprod-gateway
+      namespace: default
+      sectionName: https
+  # Placeholder only — the per-Product ApplicationSet patches /spec/hostnames/0 to the real host
+  # (dispatch-bravo-dev.preprod.aws.refplat.org). tracker is the ONLY service with an HTTPRoute (shipments is
+  # internal), so that unqualified HTTPRoute host-patch is unambiguous. `.invalid` fails safe.
+  hostnames:
+    - placeholder.invalid
+  rules:
+    - backendRefs:
+        - name: tracker
+          port: 80

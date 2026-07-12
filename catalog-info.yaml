@@ -1,0 +1,20 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: bravo-dispatch-tracker
+  description: Bravo Dispatch's tracker (edge BFF + SPA) — the last-mile parcel-tracking front door
+  tags:
+    - go
+  annotations:
+    github.com/project-slug: asanexample/bravo-dispatch
+    # The per-Product ArgoCD Application for the dev stage (the per-Product ApplicationSet names it
+    # <team>-<product>-<stage>).
+    argocd/app-name: bravo-dispatch-dev
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=dispatch-tracker
+    backstage.io/kubernetes-namespace: bravo-dispatch-dev
+spec:
+  type: service
+  # Component (the Service code) of the Product System (ADR-067: Product=System, Service=Component).
+  lifecycle: experimental
+  owner: bravo
+  system: bravo-dispatch

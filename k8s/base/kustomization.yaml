@@ -1,0 +1,30 @@
+# Namespace- and host-agnostic base for Bravo Dispatch (ADR-067 platform-injection). The per-Product
+# ApplicationSet sets the destination namespace (bravo-dispatch[-<customer>]-<stage>, Composition-created) and
+# patches the real host onto the tracker HTTPRoute — so NO `namespace:` here and the route host is a fail-safe
+# placeholder. Per-stage overlays carry each service's image digest + any real stage deltas.
+#
+# One Product, two services in P1 (ADR-067): tracker (edge: SPA + BFF) + the internal, east-west-only
+# shipments service (DynamoDB-backed shipment records). intake/dispatch-worker/notify land in later phases.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # shared ServiceAccounts (app-bravo for no-resource services; per-service SAs for resource owners)
+  - serviceaccount.yaml
+  - serviceaccounts-resources.yaml
+  # tracker — the edge service (SPA + BFF)
+  - tracker/rollout.yaml
+  - tracker/service.yaml
+  - tracker/httproute.yaml
+  - tracker/cnp-egress-eastwest.yaml
+  # shipments — internal (self-service DynamoDB)
+  - shipments/rollout.yaml
+  - shipments/service.yaml
+  - shipments/cnp-ingress-from-tracker.yaml
+  # shared observability egress (all services)
+  - netpol-egress-otel.yaml
+  - netpol-egress-pyroscope.yaml
+# Teach kustomize's replicas/commonLabels transformers about Argo Rollouts, and rewrite HTTPRoute backendRefs
+# under a namePrefix (PR previews). See the two config files.
+configurations:
+  - name-reference.yaml
+  - kustomizeconfig.yaml

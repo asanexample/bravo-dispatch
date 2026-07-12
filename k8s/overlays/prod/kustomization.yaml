@@ -1,0 +1,13 @@
+# prod. Base replica count (2) per service; digests pinned by CI per promote-by-PR (#377). No prod Environment
+# claim exists yet for this Product (P1 is dev-only) — this overlay exists so `validate.yml` proves every
+# stage builds ns-/host-agnostic ahead of that claim landing. Deliberately minimal for P1: no hand-rolled
+# replica-floor HPA or progressive-delivery patch (out of scope until there's a real prod claim + traffic).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-tracker
+    newTag: placeholder
+  - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-shipments
+    newTag: placeholder

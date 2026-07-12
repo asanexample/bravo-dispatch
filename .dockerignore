@@ -1,0 +1,10 @@
+# Keep the build context minimal. The tracker build needs web/ (the SPA source, built inside the image), but
+# never the host's node_modules or a stale dist — those are produced fresh in the node build stage.
+.git
+.github
+k8s
+*.md
+catalog-info.yaml
+.dockerignore
+web/node_modules
+web/dist

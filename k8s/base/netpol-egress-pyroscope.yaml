@@ -1,0 +1,31 @@
+# Egress to the platform Pyroscope ingest edge so the Pyroscope SDK can PUSH profiles — the app-side half of
+# trace→profiles (ADR-077 / P8b). Pyroscope is on the hub, reached cross-cluster via the shared Gateway at an
+# EXTERNAL hostname, so this is a CiliumNetworkPolicy with toFQDNs (a plain NetworkPolicy can't match a DNS
+# name), which needs DNS visibility so Cilium's FQDN proxy learns the name→IP. endpointSelector {} → every
+# Bravo Dispatch pod. FQDN = the preprod spoke (where dev runs); a prod stage on another cluster overrides this.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-to-pyroscope
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toFQDNs:
+        - matchName: "preprod-profiles.aws.refplat.org"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

@@ -1,0 +1,10 @@
+# Locally built binaries.
+/tracker
+/shipments
+
+# Frontend build artifacts (also covered by web/.gitignore, kept here for a repo-root `go build`/IDE run).
+web/node_modules/
+web/dist/
+*.tsbuildinfo
+
+.DS_Store

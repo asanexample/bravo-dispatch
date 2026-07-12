@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tracker
+spec:
+  type: ClusterIP
+  selector:
+    app: tracker
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
