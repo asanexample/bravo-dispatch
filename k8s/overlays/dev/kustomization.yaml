@@ -31,3 +31,18 @@ images:
     newTag: placeholder
   - name: 829808296602.dkr.ecr.us-east-1.amazonaws.com/team-bravo/dispatch-notify
     newTag: placeholder
+patches:
+  # Dev-only fault injection (never in prod): honored by cmd/tracker/chaos.go only when this env var is
+  # set, and only then does an inbound X-Chaos-Fault header from Pulse (the platform's synthetic-traffic
+  # generator, platform#1579) do anything.
+  - target:
+      group: argoproj.io
+      version: v1alpha1
+      kind: Rollout
+      name: tracker
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: CHAOS_INJECTION_ENABLED
+          value: "true"
