@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"github.com/asanexample/bravo-dispatch/internal/awskv"
+	"github.com/asanexample/bravo-dispatch/internal/securerand"
 	"github.com/asanexample/bravo-dispatch/internal/shipments"
 	"github.com/asanexample/bravo-dispatch/internal/telemetry"
 )
@@ -66,7 +66,7 @@ func (s *server) routes() *http.ServeMux {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
 		}
-		sh, err := shipments.Create(r.Context(), s.store, req, func() time.Time { return time.Now().UTC() }, rand.Int)
+		sh, err := shipments.Create(r.Context(), s.store, req, func() time.Time { return time.Now().UTC() }, securerand.Int)
 		if err != nil {
 			log.ErrorContext(r.Context(), "shipment create failed", "err", err)
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
