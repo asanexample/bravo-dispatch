@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,6 +28,7 @@ import (
 	"github.com/asanexample/bravo-dispatch/internal/awssns"
 	"github.com/asanexample/bravo-dispatch/internal/carrier"
 	"github.com/asanexample/bravo-dispatch/internal/flags"
+	"github.com/asanexample/bravo-dispatch/internal/securerand"
 	"github.com/asanexample/bravo-dispatch/internal/shipments"
 	"github.com/asanexample/bravo-dispatch/internal/shipmentsclient"
 	"github.com/asanexample/bravo-dispatch/internal/telemetry"
@@ -92,7 +92,7 @@ type worker struct {
 	notifyURL string
 	http      *http.Client
 	flags     flagEvaluator
-	pick      func(n int) int // carrier.Assign's selector; math/rand.Intn in production, fixed in tests
+	pick      func(n int) int // carrier.Assign's selector; securerand.Intn in production, fixed in tests
 }
 
 // run long-polls the requests queue until ctx is cancelled, processing one batch at a time. A message is only
@@ -156,7 +156,7 @@ func (w *worker) process(ctx context.Context, body string) error {
 	}
 	pick := w.pick
 	if pick == nil {
-		pick = rand.Intn
+		pick = securerand.Intn
 	}
 	assignment := carrier.Assign(priority, pick)
 
