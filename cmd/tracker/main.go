@@ -87,7 +87,7 @@ func main() {
 
 	shipmentsURL := getenv("SHIPMENTS_URL", "http://shipments")
 	srv := &server{shipments: shipmentsclient.New(shipmentsURL)}
-	handler := telemetry.WrapHandler(srv.routes(), "http.server")
+	handler := telemetry.WrapHandler(chaosMiddleware(srv.routes()), "http.server")
 
 	httpSrv := &http.Server{Addr: getenv("ADDR", ":8080"), Handler: handler, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second}
 
